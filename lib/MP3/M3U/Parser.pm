@@ -11,7 +11,7 @@ use constant SONG    => 4;
 
 use constant MAXDATA => 4; # Maximum index number of the data table
 
-$VERSION = '2.22';
+$VERSION = '2.23';
 
 sub new {
    # -parse_path -seconds -search -overwrite
