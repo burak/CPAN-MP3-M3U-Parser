@@ -11,7 +11,7 @@ use constant SONG    => 4;
 
 use constant MAXDATA => 4; # Maximum index number of the data table
 
-$VERSION = '2.23';
+$VERSION = '2.24';
 
 sub new {
    # -parse_path -seconds -search -overwrite
@@ -572,7 +572,9 @@ package MP3::M3U::Parser::Dummy;
 
 1;
 
-__END__;
+__END__
+
+=pod
 
 =head1 NAME
 
@@ -930,19 +932,5 @@ Contact the author if you find any other bugs.
 =head1 SEE ALSO
 
 L<MP3::M3U>.
-
-=head1 AUTHOR
-
-Burak Gürsoy, E<lt>burakE<64>cpan.orgE<gt>
-
-=head1 COPYRIGHT
-
-Copyright 2003-2009 Burak Gürsoy. All rights reserved.
-
-=head1 LICENSE
-
-This library is free software; you can redistribute it and/or modify 
-it under the same terms as Perl itself, either Perl version 5.8.8 or, 
-at your option, any later version of Perl 5 you may have available.
 
 =cut
