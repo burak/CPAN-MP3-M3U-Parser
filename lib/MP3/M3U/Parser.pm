@@ -113,9 +113,7 @@ sub _validate_m3u {
 
 sub _iterator {
     my($self, $ref, $fh, @fh) = @_;
-    return sub {
-        return $ref eq 'SCALAR' ? shift @fh : <$fh>;
-    };
+    return $ref eq 'SCALAR' ? sub { return shift @fh } : sub { return <$fh> };
 }
 
 sub _extract_path {
