@@ -12,7 +12,7 @@ $VERSION = '2.99_01';
 sub new {
     # -parse_path -seconds -search -overwrite
     my($class, @args) = @_;
-    my %o    = @args % 2 ? () : (@args); # options
+    my %o    = @args % 2 ? () : @args; # options
     my $self = {
         _M3U_         => [], # for parse()
         TOTAL_FILES   =>  0, # Counter
@@ -58,7 +58,7 @@ sub parse {
 sub _check_parse_file_params {
     my($self, $file) = @_;
     my $ref = ref $file;
-    if( $ref && $ref ne 'GLOB' && $ref ne 'SCALAR' ) {
+    if ( $ref && $ref ne 'GLOB' && $ref ne 'SCALAR' ) {
         croak "Unknown parameter of type '$ref' passed to parse()";
     }
     my $cd;
@@ -81,11 +81,13 @@ sub _check_parse_file_params {
     $self->{TOTAL_FILES} += 1; # Total lists counter
 
     my($fh, @fh);
-    if($ref eq 'GLOB') {
+    if ( $ref eq 'GLOB' ) {
         $fh = $file;
-    } elsif ($ref eq 'SCALAR') {
+    }
+    elsif ( $ref eq 'SCALAR' ) {
         @fh = split m{\n}xms, ${$file};
-    } else {
+    }
+    else {
         # Open the file to parse:
         require IO::File;
         $fh = IO::File->new;
@@ -117,7 +119,7 @@ sub _iterator {
 }
 
 sub _extract_path {
-    my($self, $i, $m3u, $device_ref, $counter_ref ) = @_;
+    my($self, $i, $m3u, $device_ref, $counter_ref) = @_;
     if ( # Possible cases:
         $m3u =~ m{ \A \w:[\\/]      (.+?) \z }xms || # C:\mp3\Singer - Song.mp3
         $m3u =~ m{ \A    [\\/]([^\\/].+?) \z }xms || # \mp3\Singer - Song.mp3
@@ -134,10 +136,10 @@ sub _extract_path {
 
 sub _extract_artist_song {
     my($self, $i) = @_;
-    # Try to extract artist and song info 
+    # Try to extract artist and song info
     # and remove leading and trailing spaces
-    # Some artist names can also have a "-" in it. 
-    # For this reason; require that the data has " - " in it. 
+    # Some artist names can also have a "-" in it.
+    # For this reason; require that the data has " - " in it.
     # ... but the spaces can be one or more.
     # So, things like "artist-song" does not work...
     my($artist, @xsong) = split m{\s{1,}-\s{1,}}xms, $i->[ID3] || $i->[PATH];
@@ -231,7 +233,7 @@ sub _set_parse_file_counters {
     my($self, $ttime, $tsong, $taver) = @_;
 
     # Calculate the total songs in the list:
-    $self->{'_M3U_'}[ $self->{INDEX} ]{total} = $#{$self->{'_M3U_'}[ $self->{INDEX} ]{data}} + 1;
+    $self->{_M3U_}[ $self->{INDEX} ]{total} = $#{$self->{_M3U_}[ $self->{INDEX} ]{data}} + 1;
 
     # Adjust the global counters:
     $self->{TOTAL_FILES}-- if $self->{search_string} &&
