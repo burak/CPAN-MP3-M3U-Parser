@@ -54,7 +54,6 @@ sub _check_export_params {
 sub _export_to_html {
     my($self, $encoding, $drives, $to_scalar, $file) = @_;
     my $OUTPUT = EMPTY_STRING;
-    require Text::Template;
     # I don't think that weird numbers in the html mean anything 
     # to anyone. So, if you didn't want to format seconds in your 
     # code, I'm overriding it here (only for export(); Outside 
@@ -62,24 +61,33 @@ sub _export_to_html {
     my $old_seconds = $self->{seconds};
     $self->{seconds} = 'format';
     my %t;
-    @t{ qw( up cd data down ) } = split m{\Q<!-- MP3DATASPLIT -->\E}xms, $self->_template;
+    @t{ qw( up cd data down ) } = split m{\Q<!-- MP3DATASPLIT -->\E}xms,
+                                        $self->_template;
     foreach (keys %t) {
         $t{$_} = $self->_trim( $t{$_} );
     }
-    my $tmptime = $self->{TOTAL_TIME} ? $self->_seconds($self->{TOTAL_TIME}) : undef;
+    my $tmptime = $self->{TOTAL_TIME} ? $self->_seconds($self->{TOTAL_TIME})
+                :                       undef;
     my @tmptime;
+
     if ($tmptime) {
         @tmptime = split m{:}xms,$tmptime;
         unshift @tmptime, 'Z' if $#tmptime <= 1;
     }
+
+    my $average = $self->{AVERAGE_TIME}
+                ? $self->_seconds( $self->{AVERAGE_TIME} )
+                : '<i>Unknown</i>'
+                ;
+
     my $HTML = {
         ENCODING    => $encoding,
         SONGS       => $self->{TOTAL_SONGS},
         TOTAL       => $self->{TOTAL_FILES},
-        AVERTIME    => $self->{AVERAGE_TIME} ? $self->_seconds($self->{AVERAGE_TIME}) : '<i>Unknown</i>',
-        FILE        => $to_scalar            ? EMPTY_STRING : $self->_locate_file($file),
+        AVERTIME    => $average,
+        FILE        => $to_scalar ? EMPTY_STRING : $self->_locate_file($file),
         TOTAL_FILES => $self->{TOTAL_FILES},
-        TOTAL_TIME  => @tmptime              ? [@tmptime]   : EMPTY_STRING,
+        TOTAL_TIME  => @tmptime ? [ @tmptime ]   : EMPTY_STRING,
     };
 
     $OUTPUT .= $self->_tcompile(template => $t{up}, params=> {HTML => $HTML});
@@ -99,7 +107,15 @@ sub _export_to_html {
             }
             $dlen = $m3u->[LEN] ? $self->_seconds($m3u->[LEN]) : '&nbsp;';
             $song = $song       ? $self->_escape($song)        : '&nbsp;';
-            $OUTPUT .= sprintf "%s\n", $self->_tcompile(template => $t{data}, params=> {data => {len => $dlen, song => $song}});
+            $OUTPUT .= sprintf "%s\n", $self->_tcompile(
+                                            template => $t{data},
+                                            params   => {
+                                                data => {
+                                                    len  => $dlen,
+                                                    song => $song,
+                                                }
+                                            }
+                                        );
         }
         $cdrom = EMPTY_STRING;
     }
@@ -113,14 +129,24 @@ sub _export_to_xml {
     my $OUTPUT = EMPTY_STRING;
     $self->{TOTAL_TIME} = $self->_seconds($self->{TOTAL_TIME}) if $self->{TOTAL_TIME} > 0;
     $OUTPUT .= sprintf qq~<?xml version="1.0" encoding="%s" ?>\n~, $encoding;
-    $OUTPUT .= sprintf qq~<m3u lists="%s" songs="%s" time="%s" average="%s">\n~, $self->{TOTAL_FILES}, $self->{TOTAL_SONGS}, $self->{TOTAL_TIME}, $self->{AVERAGE_TIME};
+    $OUTPUT .= sprintf qq~<m3u lists="%s" songs="%s" time="%s" average="%s">\n~,
+                       $self->{TOTAL_FILES},
+                       $self->{TOTAL_SONGS},
+                       $self->{TOTAL_TIME},
+                       $self->{AVERAGE_TIME};
     my $sc = 0;
     foreach my $cd (@{ $self->{'_M3U_'} }) {
         $sc = $#{$cd->{data}}+1;
         next if ! $sc;
-        $OUTPUT .= sprintf qq~<list name="%s" drive="%s" songs="%s">\n~, $cd->{list}, $cd->{drive}, $sc;
+        $OUTPUT .= sprintf qq~<list name="%s" drive="%s" songs="%s">\n~,
+                            $cd->{list},
+                            $cd->{drive},
+                            $sc;
         foreach my $m3u (@{ $cd->{data} }) {
-            $OUTPUT .= sprintf qq~<song id3="%s" time="%s">%s</song>\n~, $self->_escape($m3u->[ID3]) || EMPTY_STRING,$m3u->[LEN] || EMPTY_STRING,$self->_escape($m3u->[PATH]);
+            $OUTPUT .= sprintf qq~<song id3="%s" time="%s">%s</song>\n~,
+                                $self->_escape( $m3u->[ID3] ) || EMPTY_STRING,
+                                $m3u->[LEN]                   || EMPTY_STRING,
+                                $self->_escape( $m3u->[PATH] );
         }
         $OUTPUT .= "</list>\n";
         $sc = 0;
@@ -131,30 +157,32 @@ sub _export_to_xml {
 
 # compile template
 sub _tcompile {
-   my($self, @args) = @_;
-   my $class    = ref $self;
-   croak 'Invalid number of parameters' if @args % 2;
-   my %opt      = @args;
-   my $t = Text::Template->new(
-                    TYPE       => 'STRING',
-                    SOURCE     => $opt{template},
-                    DELIMITERS => ['<%', '%>'],
-                    ) or croak "Couldn't construct the HTML template: $Text::Template::ERROR";
-   my(@globals);
-   foreach my $p ( keys %{ $opt{params} } ) {
+    my($self, @args) = @_;
+    my $class = ref $self;
+    croak 'Invalid number of parameters' if @args % 2;
+    require Text::Template;
+    my %opt = @args;
+    my $t   = Text::Template->new(
+                TYPE       => 'STRING',
+                SOURCE     => $opt{template},
+                DELIMITERS => ['<%', '%>'],
+            ) or croak "Couldn't construct the HTML template: $Text::Template::ERROR";
+
+    my @globals;
+    foreach my $p ( keys %{ $opt{params} } ) {
         my $ref    = ref $opt{params}->{$p};
         my $prefix = $ref eq 'HASH'  ? q{%}
                    : $ref eq 'ARRAY' ? q{@}
                    :                   q{$}
                    ;
         push @globals, $prefix . $p;
-   }
+    }
 
-   my $text = $t->fill_in(PACKAGE => $class . '::Dummy',
+    my $text = $t->fill_in(PACKAGE => $class . '::Dummy',
                 PREPEND => sprintf('use strict;use vars qw[%s];', join q{ }, @globals),
                 HASH    => $opt{params},
               ) or croak "Couldn't fill in template: $Text::Template::ERROR";
-   return $text;
+    return $text;
 }
 
 # HTML template code
