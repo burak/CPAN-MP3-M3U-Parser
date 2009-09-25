@@ -1,207 +1,242 @@
 package MP3::M3U::Parser;
 use strict;
-use vars qw[$VERSION $AUTOLOAD];
+use warnings;
+use vars qw( $VERSION );
+use base qw( MP3::M3U::Parser::Export );
+use Carp qw( croak );
+use MP3::M3U::Parser::Constants;
+use constant MINUTE_MULTIPLIER => 60;
 
-# Data table key map
-use constant PATH    => 0;
-use constant ID3     => 1;
-use constant LEN     => 2;
-use constant ARTIST  => 3;
-use constant SONG    => 4;
-
-use constant MAXDATA => 4; # Maximum index number of the data table
-
-$VERSION = '2.24';
+$VERSION = '2.99_01';
 
 sub new {
    # -parse_path -seconds -search -overwrite
-   my $class = shift;
-   my %o     = scalar(@_) % 2 ? () : (@_); # options
-   my $self  = {
-                _M3U_         => [], # for parse()
-                TOTAL_FILES   =>  0, # Counter
-                TOTAL_TIME    =>  0, # In seconds
-                TOTAL_SONGS   =>  0, # Counter
-                AVERAGE_TIME  =>  0, # Counter
-                ACOUNTER      =>  0, # Counter
-                ANON          =>  0, # Counter for SCALAR & GLOB M3U
-                INDEX         =>  0, # index counter for _M3U_
-                EXPORTF       =>  0, # Export file name counter for anonymous exports
-                seconds       => $o{'-seconds'}    || '', # format or get seconds.
-                search_string => $o{'-search'}     || '', # search_string
-                parse_path    => $o{'-parse_path'} || '', # mixed list?
-                overwrite     => $o{'-overwrite'}  ||  0, # overwrite export file if exists?
-                encoding      => $o{'-encoding'}   || '', # leave it to export() if no param
-                expformat     => $o{'-expformat'}  || '', # leave it to export() if no param
-                expdrives     => $o{'-expdrives'}  || '', # leave it to export() if no param
+   my($class, @args) = @_;
+   my %o    = @args % 2 ? () : (@args); # options
+   my $self = {
+      _M3U_         => [], # for parse()
+      TOTAL_FILES   =>  0, # Counter
+      TOTAL_TIME    =>  0, # In seconds
+      TOTAL_SONGS   =>  0, # Counter
+      AVERAGE_TIME  =>  0, # Counter
+      ACOUNTER      =>  0, # Counter
+      ANON          =>  0, # Counter for SCALAR & GLOB M3U
+      INDEX         =>  0, # index counter for _M3U_
+      EXPORTF       =>  0, # Export file name counter for anonymous exports
+      seconds       => $o{'-seconds'}    || EMPTY_STRING, # format or get seconds.
+      search_string => $o{'-search'}     || EMPTY_STRING, # search_string
+      parse_path    => $o{'-parse_path'} || EMPTY_STRING, # mixed list?
+      overwrite     => $o{'-overwrite'}  ||            0, # overwrite export file if exists?
+      encoding      => $o{'-encoding'}   || EMPTY_STRING, # leave it to export() if no param
+      expformat     => $o{'-expformat'}  || EMPTY_STRING, # leave it to export() if no param
+      expdrives     => $o{'-expdrives'}  || EMPTY_STRING, # leave it to export() if no param
    };
-   if ($self->{search_string} and length($self->{search_string}) < 3) {
-      die "A search string must be at least three characters long!";
+   if ( $self->{search_string} && length $self->{search_string} < MINIMUM_SEARCH_LENGTH ) {
+      croak 'A search string must be at least three characters long';
    }
    bless  $self, $class;
    return $self;
 }
 
 sub parse {
-   my $self  = shift;
-   my @files = @_;
-   my $file;
-   foreach $file (@files) {
-      unless(ref $file) {
+   my($self, @files) = @_;
+   foreach my $file (@files) {
+      if( ! ref $file ) {
          $file = $self->_locate_file($file);
-         -e $file or die "'$file' does not exist!";
+         -e $file or croak "'$file' does not exist";
       }
       $self->_parse_file($file);
    }
 
    # Average time of all the parsed songs:
-   $self->{AVERAGE_TIME} = ($self->{ACOUNTER} and $self->{TOTAL_TIME}) 
+   $self->{AVERAGE_TIME} = ($self->{ACOUNTER} && $self->{TOTAL_TIME})
                            ? $self->_seconds($self->{TOTAL_TIME}/$self->{ACOUNTER})
                            : 0;
-   return $self if defined wantarray;
+   return defined wantarray ? $self : undef;
 }
 
-sub _parse_file {
-   # supports disk files, scalar variables and filehandles (typeglobs)
-   my $self = shift;
-   my $file = shift;
-   my $ref  = ref($file) || '';
-   if($ref and $ref !~ m[^(?:GLOB|SCALAR)$]) {
-      die "Unknown parameter of type '$ref' passed to parse()!";
+sub _check_parse_file_params {
+   my($self, $file) = @_;
+   my $ref = ref $file;
+   if( $ref && $ref ne 'GLOB' && $ref ne 'SCALAR' ) {
+      croak "Unknown parameter of type '$ref' passed to parse()";
    }
    my $cd;
-   unless ($ref) {
-      $cd = (split /[\\\/]/, $file)[-1];
-      $cd =~ s,\.m3u,,i;
+   if ( ! $ref ) {
+      my @tmp = split m{[\\/]}xms, $file;
+      ($cd = pop @tmp) =~ s{ [.] m3u }{}xmsi;
    }
-   my $i = $self->{INDEX};
-   my $this_file;
-   if ($ref) {
-      $this_file = 'ANON'.$self->{ANON}++;
-   } else {
-      $this_file = $self->_locate_file($file);
-   }
-   $self->{'_M3U_'}[$i] = {file  => $this_file,
-                           list  => $ref ? $this_file : ($cd || ''),
-                           drive => 'CDROM:',
-                           data  => [],
-                           total => 0,
-                           };
+
+   my $this_file = $ref ? 'ANON' . $self->{ANON}++
+                 :        $self->_locate_file($file)
+                 ;
+   $self->{'_M3U_'}[ $self->{INDEX} ] = {
+      file  => $this_file,
+      list  => $ref ? $this_file : ($cd || EMPTY_STRING),
+      drive => 'CDROM:',
+      data  => [],
+      total => 0,
+   };
+
    $self->{TOTAL_FILES} += 1; # Total lists counter
-   my $index             = 0; # Index number of the list array
-   # These three variables are used when there is a '-search' parameter.
-   # long: total_time, total_songs, total_average_time
-   my($ttime,$tsong,$taver) = (0,0,0);
-   # while loop variables. j: junk data.
-   my($m3u,$j,@song,$j2,$sec,$temp_sec);
 
    my($fh, @fh);
    if($ref eq 'GLOB') {
       $fh = $file;
    } elsif ($ref eq 'SCALAR') {
-      @fh = split /\n/, $$file;
+      @fh = split m{\n}xms, ${$file};
    } else {
       # Open the file to parse:
       require IO::File;
       $fh = IO::File->new;
-      $fh->open("< $file") or die "I could't open '$file': $!" unless $ref;
+      $fh->open("< $file") or croak "I could't open '$file': $!";
    }
+   return $ref, $fh, @fh;
+}
 
-PREPROCESS:
-   while ($m3u = ($ref eq 'SCALAR') ? (shift @fh) : <$fh>) {
+sub _validate_m3u {
+   my($self, $next, $ref, $file) = @_;
+   PREPROCESS: while ( my $m3u = $next->() ) {
       # First line is just a comment. But we need it to validate
       # the file as a m3u playlist file.
       chomp $m3u;
-      if($m3u !~ m[^#EXTM3U]) {
-         die $ref ? "The '$ref' parameter you have passed does not contain valid m3u data!"
-                  : "'$file' is not a valid m3u file!";
+      if ( $m3u !~ m{ \A \#EXTM3U }xms ) {
+         croak $ref ? "The '$ref' parameter you have passed does not contain valid m3u data"
+                    : "'$file' is not a valid m3u file";
       }
       last PREPROCESS;
    }
+   return;
+}
 
-   my $dkey   =  $self->{'_M3U_'}[$i]{data};  # data key
-   my $device = \$self->{'_M3U_'}[$i]{drive}; # device letter
+sub _iterator {
+   my($self, $ref, $fh, @fh) = @_;
+   return sub {
+      return $ref eq 'SCALAR' ? shift @fh : <$fh>;
+   };
+}
 
-RECORD: 
-   while ($m3u = ($ref eq 'SCALAR') ? (shift @fh) : <$fh>) {
+sub _extract_path {
+   my($self, $i, $m3u, $device_ref, $counter_ref ) = @_;
+   if ( # Possible cases:
+      $m3u =~ m{ \A \w:[\\/]      (.+?) \z }xms || # C:\mp3\Singer - Song.mp3
+      $m3u =~ m{ \A    [\\/]([^\\/].+?) \z }xms || # \mp3\Singer - Song.mp3
+      $m3u =~ m{ \A               (.+?) \z }xms    # Singer - Song.mp3
+   ) {
+      # Get the drive and path info.
+      my $path       = $1;
+      $i->[PATH]     = $self->{parse_path} eq 'asis' ? $m3u : $path;
+      ${$device_ref} = $1 if ${$device_ref} eq 'CDROM:' && $m3u =~ m{ \A (\w:) }xms;
+      ${ $counter_ref }++;
+   }
+   return;
+}
+
+sub _extract_artist_song {
+   my($self, $i) = @_;
+   # Try to extract artist and song info 
+   # and remove leading and trailing spaces
+   # Some artist names can also have a "-" in it. 
+   # For this reason; require that the data has " - " in it. 
+   # ... but the spaces can be one or more.
+   # So, things like "artist-song" does not work...
+   my($artist, @xsong) = split m{\s{1,}-\s{1,}}xms, $i->[ID3] || $i->[PATH];
+   if ( $artist ) {
+      $artist = $self->_trim( $artist );
+      $artist =~ s{.*[\\/]}{}xms; # remove path junk
+      $i->[ARTIST] = $artist;
+   }
+   if ( @xsong ) {
+      my $song = join q{-}, @xsong;
+      $song =~ $self->_trim( $song );
+      $song =~ s{ [.] [a-zA-Z0-9]+ \z }{}xms; # remove extension if exists
+      $i->[SONG] = $song;
+   }
+   return;
+}
+
+sub _initialize {
+   my($self, $i);
+   foreach my $CHECK ( 0..MAXDATA ) {
+      $i->[$CHECK] = EMPTY_STRING if ! defined $i->[$CHECK];
+   }
+   return;
+}
+
+sub _parse_file {
+   # supports disk files, scalar variables and filehandles (typeglobs)
+   my($self, $file)   = @_;
+   my($ref, $fh, @fh) = $self->_check_parse_file_params( $file );
+   my $next           = $self->_iterator( $ref, $fh, @fh );
+
+   $self->_validate_m3u( $next, $ref, $file );
+
+   my $dkey   =  $self->{'_M3U_'}[ $self->{INDEX} ]{data};  # data key
+   my $device = \$self->{'_M3U_'}[ $self->{INDEX} ]{drive}; # device letter
+
+   # These three variables are used when there is a '-search' parameter.
+   # long: total_time, total_songs, total_average_time
+   my($ttime,$tsong,$taver) = (0,0,0);
+   my $index = 0; # index number of the list array
+   my $temp_sec;  # must be defined outside
+
+   RECORD: while ( my $m3u = $next->() ) {
       chomp $m3u;
-      next unless $m3u; # Record may be blank if it is not a disk file.
+      next if ! $m3u; # Record may be blank if it is not a disk file.
       $#{$dkey->[$index]} = MAXDATA; # For the absence of EXTINF line.
       # If the extra information exists, parse it:
-      if($m3u =~ m!#EXTINF!i) {
-         ($j ,@song) = split(/\,/,$m3u);
-         ($j ,$sec)  = split(/:/,$j);
-         $ttime     += $sec;
+      if ( $m3u =~ m{ \#EXTINF}xmsi ) {
+         my($j, $sec, @song);
+         ($j ,@song) = split m{\,}xms, $m3u;
+         ($j ,$sec)  = split m{:}xms, $j;
          $temp_sec   = $sec;
-         $dkey->[$index][ID3] = join(",", @song);
+         $ttime     += $sec;
+         $dkey->[$index][ID3] = join q{,}, @song;
          $dkey->[$index][LEN] = $self->_seconds($sec || 0);
          $taver++;
          next RECORD; # jump to path info
       }
 
-      # Get the drive and path info.      Possible cases are:
-      if($m3u =~ m{^\w:[\\/](.+?)$}x or # C:\mp3\Singer - Song.mp3
-         $m3u =~ m{^   [\\/]([^\\/].+?)$}x or # \mp3\Singer - Song.mp3
-         $m3u =~ m{^        (.+?)$}x    # Singer - Song.mp3
-         ) {
-         $dkey->[$index][PATH] = $self->{parse_path} eq 'asis' ? $m3u : $1;
-         $$device = $1 if $$device eq 'CDROM:' and $m3u =~ m[^(\w:)];
-         $tsong++;
-      }
-
-      # Try to extract artist and song info 
-      # and remove leading and trailing spaces
-      # Some artist names can also have a "-" in it. 
-      # For this reason; require that the data has " - " in it. 
-      # ... but the spaces can be one or more.
-      # So, things like "artist-song" does not work...
-      my($artist, @xsong) = split /\s{1,}-\s{1,}/, $dkey->[$index][ID3] || $dkey->[$index][PATH];
-      if ($artist) {
-         $artist =~ s[^\s+][];
-         $artist =~ s[\s+$][];
-         $artist =~ s[.*[\\/]][]; # remove path junk
-         $dkey->[$index][ARTIST] = $artist;
-      }
-      if (@xsong) {
-         my $song = join '-', @xsong;
-         $song =~ s[^\s+][];
-         $song =~ s[\s+$][];
-         $song =~ s[\.[a-zA-Z0-9]+$][]; # remove extension if exists
-         $dkey->[$index][SONG] = $song;
-      }
-
-      # convert undefs to empty strings
-      foreach my $CHECK (0..MAXDATA) {
-         $dkey->[$index][$CHECK] = '' unless defined $dkey->[$index][$CHECK];
-      }
+      $self->_extract_path(        $dkey->[$index], $m3u, $device, \$tsong );
+      $self->_extract_artist_song( $dkey->[$index] );
+      $self->_initialize(          $dkey->[$index] );
 
       # If we are searching something:
-      if($self->{search_string}) {
-         if($self->_search($dkey->[$index][PATH], $dkey->[$index][ID3])) {
-            $index++; # If we got a match, increase the index
-         } else { # If we didnt matched anything, resize these counters ...
+      if ( $self->{search_string} ) {
+         if ( $self->_search( $dkey->[$index][PATH], $dkey->[$index][ID3] ) ) {
+            $index++; # if we got a match, increase the index
+         }
+         else {
+            # if we didnt match anything, resize these counters ...
             $tsong--;
             $taver--;
             $ttime -= $temp_sec;
             delete $dkey->[$index]; # ... and delete the empty index
          }
-      } else {
+      }
+      else {
          $index++; # If we are not searching, just increase the index
       }
    }
-   # Close the file
-   $fh->close unless $ref;
+
+   $fh->close if ! $ref;
+   return $self->_set_parse_file_counters( $ttime, $tsong, $taver );
+}
+
+sub _set_parse_file_counters {
+   my($self, $ttime, $tsong, $taver) = @_;
 
    # Calculate the total songs in the list:
-   $self->{'_M3U_'}[$i]{total} = $#{$self->{'_M3U_'}[$i]{data}} + 1;
+   $self->{'_M3U_'}[ $self->{INDEX} ]{total} = $#{$self->{'_M3U_'}[ $self->{INDEX} ]{data}} + 1;
 
    # Adjust the global counters:
-   $self->{TOTAL_FILES}-- if($self->{search_string} and $#{ $self->{'_M3U_'}[$i]{data} } < 0);
+   $self->{TOTAL_FILES}-- if $self->{search_string} &&
+                             $#{ $self->{'_M3U_'}[ $self->{INDEX} ]{data} } < 0;
    $self->{TOTAL_TIME}  += $ttime;
    $self->{TOTAL_SONGS} += $tsong;
    $self->{ACOUNTER}    += $taver;
    $self->{INDEX}++;
-   # Return the parse object.
+
    return $self;
 }
 
@@ -215,7 +250,7 @@ sub reset {
       $self->{AVERAGE_TIME} = 0;
       $self->{ACOUNTER}     = 0;
       $self->{INDEX}        = 0;
-   return $self if defined wantarray;
+   return defined wantarray ? $self : undef;
 }
 
 sub result {
@@ -225,54 +260,58 @@ sub result {
 
 sub _locate_file {
    require File::Spec;
-
    my $self = shift;
    my $file = shift;
-   if ($file !~ m{[\\/]}) {
+   if ($file !~ m{[\\/]}xms) {
       # if $file does not have a slash in it then it is in the cwd.
       # don't know if this code is valid in some other filesystems.
       require Cwd;
-      $file = Cwd::getcwd()."/".$file;
+      $file = File::Spec->catfile( Cwd::getcwd(), $file );
    }
    return File::Spec->canonpath($file);
 }
 
 sub _search {
-   my $self = shift;
-   my $path = shift;
-   my $id3  = shift;
+   my($self, $path, $id3) = @_;
    return(0) unless( $id3 or $path);
    my $search = quotemeta($self->{search_string});
    # Try a basic case-insensitive match:
-   return(1) if($id3 =~ /$search/i or $path =~ /$search/i);
-   return(0);
+   return 1 if $id3 =~ /$search/xmsi || $path =~ /$search/xmsi;
+   return 0;
 }
 
 sub _escape {
    my $self = shift;
-   my $text = shift || return '';
+   my $text = shift || return EMPTY_STRING;
    #$bad .= chr $_ for (1..8,11,12,14..31,127..144,147..159);$text =~ s/[$bad]//gs;
-   my %escape = (
-              '&' => '&amp;',
-              '"' => '&quot;',
-              '<' => '&lt;',
-              '>' => '&gt;',
+   my %escape = qw(
+      &   &amp;
+      "   &quot;
+      <   &lt;
+      >   &gt;
    );
-   $text =~ s,\Q$_,$escape{$_},gs foreach keys %escape;
+   $text =~ s/ \Q$_\E /$escape{$_}/xmsg foreach keys %escape;
    return $text;
+}
+
+sub _trim {
+   my($self, $s) = @_;
+   $s =~ s{ \A \s+    }{}xmsg;
+   $s =~ s{    \s+ \z }{}xmsg;
+   return $s;
 }
 
 sub info {
    # Instead of direct accessing to object tables, use this method.
    my $self = shift;
    my @drive;
-   for (my $i = 0; $i <= $#{ $self->{'_M3U_'} }; $i++) {
+   for my $i ( 0..$#{ $self->{_M3U_} } ) {
       push @drive, $self->{'_M3U_'}[$i]{drive};
    }
    return(
           songs   => $self->{TOTAL_SONGS},
           files   => $self->{TOTAL_FILES},
-          ttime   => $self->{TOTAL_TIME}    ? $self->_seconds($self->{TOTAL_TIME}) 
+          ttime   => $self->{TOTAL_TIME}    ? $self->_seconds($self->{TOTAL_TIME})
                                             : 0,
           average => $self->{AVERAGE_TIME} || 0,
           drive   => [@drive],
@@ -283,292 +322,24 @@ sub _seconds {
    # Format seconds if wanted.
    my $self = shift;
    my $all  = shift;
-   return $all    unless( $self->{seconds} eq 'format' and $all !~ /:/);
-   return '00:00' unless $all;
-      $all  = $all/60;
-   my $min  = int($all);
-   my $sec  = sprintf("%02d",int(($all - $min)*60));
+   return '00:00' if ! $all;
+   my $ok   = $self->{seconds} eq 'format' && $all !~ m{:}xms;
+   return $all if ! $ok;
+      $all  = $all / MINUTE_MULTIPLIER;
+   my $min  = int $all;
+   my $sec  = sprintf '%02d', int( MINUTE_MULTIPLIER * ($all - $min) );
    my $hr;
-   if($min > 60) {
-      $all = $min/60;
+   if ( $min > MINUTE_MULTIPLIER ) {
+      $all = $min / MINUTE_MULTIPLIER;
       $hr  = int $all;
-      $min = int(($all - $hr)*60);
+      $min = int( MINUTE_MULTIPLIER * ($all - $hr) );
    }
-   $min = sprintf("%02d",$min);
+   $min = sprintf q{%02d}, $min;
    return $hr ? "$hr:$min:$sec" : "$min:$sec";
 }
 
-sub export {
-   my $self      = shift;
-   my %opt       = scalar(@_) % 2 ? () : (@_);
-   my $format    = $opt{'-format'}    || $self->{'expformat'}    || 'html';
-   my $file      = $opt{'-file'}      || sprintf('mp3_m3u%s.%s', $self->{EXPORTF}, $format);
-   my $encoding  = $opt{'-encoding'}  || $self->{'encoding'}     || 'ISO-8859-1';
-   my $drives    = $opt{'-drives'}    || $self->{'expdrives'}    || 'on';
-   my $overwrite = $opt{'-overwrite'} || $self->{'overwrite'}    ||  0; # global overwrite || local overwrite || don't overwrite
-   my $to_scalar = $opt{'-toscalar'} || $self->{'exptoscalar'} ||  0;
-      $file      = $self->_locate_file($file) unless $to_scalar;
-   my $fh;
-   if ($to_scalar) {
-      die "-toscalar must be a SCALAR ref!" unless ref $to_scalar and ref $to_scalar eq 'SCALAR';   
-   }
-   unless ($to_scalar) {
-      if (-e $file and not $overwrite) {
-         die "The export file '$file' exists on disk and you didn't select to overwrite it!";
-      }
-      require IO::File;
-      $fh = IO::File->new;
-      $fh->open("> $file") or die "I can't open export file '$file' for writing: $!"; 
-   }
-   my($cd,$m3u);
-   my $OUTPUT = '';
-   if ($format eq 'xml') {
-      $self->{TOTAL_TIME} = $self->_seconds($self->{TOTAL_TIME}) if $self->{TOTAL_TIME} > 0;
-      $OUTPUT .= sprintf qq~<?xml version="1.0" encoding="%s" ?>\n~, $encoding;
-      $OUTPUT .= sprintf qq~<m3u lists="%s" songs="%s" time="%s" average="%s">\n~, $self->{TOTAL_FILES}, $self->{TOTAL_SONGS}, $self->{TOTAL_TIME}, $self->{AVERAGE_TIME};
-      my $sc = 0;
-      foreach $cd (@{ $self->{'_M3U_'} }) {
-         $sc = $#{$cd->{data}}+1;
-         next unless $sc;
-         $OUTPUT .= sprintf qq~<list name="%s" drive="%s" songs="%s">\n~, $cd->{list}, $cd->{drive}, $sc;
-         foreach $m3u (@{ $cd->{data} }) { 
-            $OUTPUT .= sprintf qq~<song id3="%s" time="%s">%s</song>\n~, $self->_escape($m3u->[ID3]) || '',$m3u->[LEN] || '',$self->_escape($m3u->[PATH]);
-         }
-         $OUTPUT .= "</list>\n";
-         $sc = 0;
-      }
-      $OUTPUT .= "</m3u>\n";
-   } else {
-      require Text::Template;
-      # I don't think that weird numbers in the html mean anything 
-      # to anyone. So, if you didn't want to format seconds in your 
-      # code, I'm overriding it here (only for export(); Outside 
-      # export(), you'll get the old value):
-      local $self->{seconds} = 'format';
-      my %t;
-      ($t{up},$t{cd},$t{data},$t{down}) = split /<!-- MP3DATASPLIT -->/, $self->_template;
-      foreach (keys %t) {
-         $t{$_} =~ s,^\s+,,gs;
-         $t{$_} =~ s,\s+$,,gs;
-      }
-      my $tmptime = $self->{TOTAL_TIME} ? $self->_seconds($self->{TOTAL_TIME}) : undef;
-      my @tmptime;
-      if ($tmptime) {
-         @tmptime = split /:/,$tmptime;
-         unshift @tmptime, 'Z' unless $#tmptime > 1;
-      }
-      my $HTML = {
-              ENCODING    => $encoding,
-              SONGS       => $self->{TOTAL_SONGS},
-              TOTAL       => $self->{TOTAL_FILES},
-              AVERTIME    => $self->{AVERAGE_TIME} ? $self->_seconds($self->{AVERAGE_TIME}) : '<i>Unknown</i>',
-              FILE        => $to_scalar ? '' : $self->_locate_file($file),
-              TOTAL_FILES => $self->{TOTAL_FILES},
-              TOTAL_TIME  => @tmptime ? [@tmptime] : '',
-      };
-
-      $OUTPUT .= $self->_tcompile(template => $t{up}, params=> {HTML => $HTML});
-      my($song,$cdrom, $dlen);
-      foreach $cd (@{ $self->{'_M3U_'} }) {
-         next if($#{$cd->{data}} < 0);
-         $cdrom .= "$cd->{drive}\\" unless($drives eq 'off');
-         $cdrom .= $cd->{list};
-         $OUTPUT .= sprintf $t{cd}."\n", $cdrom;
-         foreach $m3u (@{ $cd->{data} }) {
-            $song = $m3u->[ID3];
-            unless($song) {
-               $song = (split /\\/, $m3u->[PATH])[-1] || $m3u->[PATH];
-               $song = (split /\./, $song       )[ 0] || $song;
-            }
-            $dlen = $m3u->[LEN] ? $self->_seconds($m3u->[LEN]) : '&nbsp;';
-            $song = $song       ? $self->_escape($song)        : '&nbsp;';
-            $OUTPUT .= sprintf "%s\n", $self->_tcompile(template => $t{data}, params=> {data => {len => $dlen, song => $song}});
-         }
-         $cdrom = '';
-      }
-      $OUTPUT .= $t{down};
-   }
-   if($to_scalar) {
-      $$to_scalar = $OUTPUT;
-   } else {
-      print $fh $OUTPUT;
-      $fh->close;
-   }
-   $self->{EXPORTF}++;
-   return $self if defined wantarray;
-}
-
-# compile template
-sub _tcompile {
-   my $self     = shift;
-   my $class    = ref $self;
-   die "Invalid number of parameters!" if scalar @_ % 2;
-   my %opt      = @_;
-   my $template = Text::Template->new(TYPE       => 'STRING', 
-                                      SOURCE     => $opt{template},
-                                      DELIMITERS => ['<%', '%>'],
-                                      ) or die "Couldn't construct the HTML template: $Text::Template::ERROR";
-   my(@globals, $prefix, $ref);
-   foreach (keys %{ $opt{params} }) {
-      if ($ref = ref $opt{params}->{$_}) {
-            if ($ref eq 'HASH')  {$prefix = '%'}
-         elsif ($ref eq 'ARRAY') {$prefix = '@'}
-         else                    {$prefix = '$'}
-      }
-      else {$prefix = '$'}
-      push @globals, $prefix . $_;
-   }
-
-   my $text = $template->fill_in(PACKAGE => $class . '::Dummy',
-                                 PREPEND => sprintf('use strict;use vars qw[%s];', join(" ", @globals)),
-                                 HASH    => $opt{params},
-              ) or die "Couldn't fill in template: $Text::Template::ERROR";
-   return $text;
-}
-
-# HTML template code
-sub _template {
-   return <<'MP3M3UParserTemplate';
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
-   "http://www.w3.org/TR/html4/loose.dtd">
-<html>
- <head>
-   <title>MP3::M3U::Parser Generated PlayList</title>
-   <meta name="Generator" content="MP3::M3U::Parser">
-   <meta http-equiv="content-type" content="text/html; charset=<%$HTML{ENCODING}%>">
-
-   <style type="text/css">
-   <!--
-      body   { background   : #000040;
-               font-family  : font1, Arial, serif;
-               color        : #FFFFFF;
-               font-size    : 10pt;    }
-      td     { background   : none;
-               font-family  : Arial, serif;
-               color        : #FFFFFF;
-               font-size    : 13px;    }
-      hr     { background   : none;
-               color        : #FFBF00; }
-      .para1 { margin-top   : -42px;
-               margin-left  : 350px;
-               margin-right : 10px;
-               font-family  : font2, Arial, serif;
-               font-size    : 30px; 
-               line-height  : 35px;
-               background   : none;
-               color        : #E1E1E1;
-               text-align   : left;    }
-      .para2 { margin-top   : 15px;
-               margin-left  : 15px;
-               margin-right : 50px;
-               font-family  : font1, Arial Black, serif;
-               font-size    : 50px;
-               line-height  : 40px;
-               background   : none;
-               color        : #004080;
-               text-align   : left;    }
-      .t     { font-family  : Arial, serif;
-               background   : none;
-               color        : #FFBF00;
-               font-size    : 13px;    }
-      .ts    { font-family  : Arial, serif;
-               color        : #FFBF00;
-               background   : none;
-               font-size    : 10px;    }
-      .s     { font-family  : Arial, serif;
-               background   : none;
-               color        : #FFFFFF;
-               font-size    : 13px;    }
-      .info  { font-family  : Arial, serif;
-               background   : none;
-               color        : #409FFF;
-               font-size    : 10px;    }
-      .infob { font-family  : Arial, serif;
-               background   : none;
-               color        : #FFBF00;
-               font-size    : 15px;    }
-    -->
-   </style>
-
- </head>
-
-<body>
-
- <div align="center">
-  <div class="para2" align="center"><p>MP3::M3U::Parser</p></div>
-  <div class="para1" align="center"><p>playlist</p></div>
- </div>
-
-<hr align="left" width="90%" noshade="noshade" size="1">
- <div align="left">
-
-  <table border="0" cellspacing="0" cellpadding="0" width="98%">
-   <tr><td>
-    <span class="ts"><%$HTML{SONGS}%></span> <span class="info"> tracks and 
-    <span class="ts"><%$HTML{TOTAL}%></span> Lists in playlist, 
-      average track length: </span> 
-      <span class="ts"><%$HTML{AVERTIME}%></span><span class="info">.</span>
-     <br>
-    <span class="info">Playlist length: </span><%
-   my $time;
-   if ($HTML{TOTAL_TIME}) {
-      my @time = @{$HTML{TOTAL_TIME}};
-      $time = qq~<span class="ts"  > $time[0] </span>
-                 <span class="info"> hours    </span>~ if $time[0] ne 'Z';
-      $time .= qq~
-            <span class="ts"  > $time[1] </span>
-            <span class="info"> minutes  </span>
-            <span class="ts"  > $time[2] </span>
-            <span class="info"> seconds. </span>~;
-   } else {
-      $time = qq~<span class="ts"><i>Unknown</i></span><span class="info">.</span>~;
-   }
-   $time;
-
-     %><br>
-    <% 
-      qq~<span class="info">Right-click <a href="file://$HTML{FILE}">here</a>
-      to save this HTML file.</span>~ if $HTML{FILE}
-    %>
-    </td>
-   </tr>
- </table>
-
-</div>
-<blockquote>
-<p><span class="infob"><big><% 
-$HTML{TOTAL_FILES} > 1 ? "Playlists and Files" : "Playlist files"; 
-%>:</big></span></p>
-
-<table border="0" cellspacing="1" cellpadding="2">
-
-<!-- MP3DATASPLIT -->
-<tr><td colspan="2"><b>%s</b></td></tr>
-<!-- MP3DATASPLIT -->
-<tr><td><span class="t"><%$data{len}%></span></td><td><%$data{song}%></td></tr>
-<!-- MP3DATASPLIT -->
-
-  </table>
-</blockquote>
-<hr align="left" width="90%" noshade size="1">
-<span class="s">This HTML File is based on 
-<a href="http://www.winamp.com">WinAmp</a>`s HTML List.</span>
-</body>
-</html>
-MP3M3UParserTemplate
-}
-
-sub AUTOLOAD {
-   my $self = shift;
-   my $name = $AUTOLOAD;
-      $name =~ s/.*://;
-   my $class = ref($self) || __PACKAGE__;
-   die $class . " has no method called '$name'!";
-}
-
-sub DESTROY {}
-
-package MP3::M3U::Parser::Dummy;
+package
+   MP3::M3U::Parser::Dummy;
 
 1;
 
@@ -931,6 +702,6 @@ Contact the author if you find any other bugs.
 
 =head1 SEE ALSO
 
-L<MP3::M3U>.
+
 
 =cut

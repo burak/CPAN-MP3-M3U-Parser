@@ -1,20 +1,21 @@
 #!/usr/bin/env perl -w
 use strict;
+use warnings;
 use Test::More qw( no_plan );
 
 my $parser = MyParser->new;
    $parser->parse('test.m3u');
    $parser->export(-format    => 'html',
-                   -file      => "03_sub_html.html",
+                   -file      => '05_sub_html.html',
                    -overwrite => 1);
 
-ok(1);
+ok(1, 'Some test');
 
 package MyParser;
 use base qw[MP3::M3U::Parser];
 
 sub _template {
-   return <<'MP3M3UParserTemplate';
+   return <<'MP3M3UPARSERTEMPLATE';
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
    "http://www.w3.org/TR/html4/loose.dtd">
 <html>
@@ -63,5 +64,5 @@ sub _template {
   </table>
 </body>
 </html>
-MP3M3UParserTemplate
+MP3M3UPARSERTEMPLATE
 }
