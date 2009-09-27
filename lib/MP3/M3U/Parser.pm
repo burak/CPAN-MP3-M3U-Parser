@@ -7,7 +7,7 @@ use Carp qw( croak );
 use MP3::M3U::Parser::Constants;
 use constant MINUTE_MULTIPLIER => 60;
 
-$VERSION = '2.99_01';
+$VERSION = '2.30';
 
 sub new {
     # -parse_path -seconds -search -overwrite
@@ -244,16 +244,16 @@ sub _set_parse_file_counters {
     return $self;
 }
 
-sub reset {
+sub reset { ## no critic (ProhibitBuiltinHomonyms)
     # reset the object
     my $self = shift;
-        $self->{'_M3U_'}      = [];
-        $self->{TOTAL_FILES}  = 0;
-        $self->{TOTAL_TIME}   = 0;
-        $self->{TOTAL_SONGS}  = 0;
-        $self->{AVERAGE_TIME} = 0;
-        $self->{ACOUNTER}     = 0;
-        $self->{INDEX}        = 0;
+    $self->{'_M3U_'}      = [];
+    $self->{TOTAL_FILES}  = 0;
+    $self->{TOTAL_TIME}   = 0;
+    $self->{TOTAL_SONGS}  = 0;
+    $self->{AVERAGE_TIME} = 0;
+    $self->{ACOUNTER}     = 0;
+    $self->{INDEX}        = 0;
     return defined wantarray ? $self : undef;
 }
 

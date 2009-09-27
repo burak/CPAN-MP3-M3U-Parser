@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use vars qw( $VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS $OID );
 
-$VERSION = '3.00';
+$VERSION = '2.30';
 
 # Data table key map
 use constant PATH    => $OID++;

@@ -5,7 +5,7 @@ use vars qw( $VERSION );
 use Carp qw( croak );
 use MP3::M3U::Parser::Constants;
 
-$VERSION = '3.00';
+$VERSION = '2.30';
 
 sub export {
     my($self, @args) = @_;
