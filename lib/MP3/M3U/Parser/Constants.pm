@@ -20,18 +20,8 @@ use base qw( Exporter );
 
 BEGIN {
     %EXPORT_TAGS = (
-        fields => [qw(
-                    PATH
-                    ID3
-                    LEN
-                    ARTIST
-                    SONG
-                    MAXDATA
-                   )],
-        etc    => [qw(
-                    EMPTY_STRING
-                    MINIMUM_SEARCH_LENGTH
-                   )],
+        fields => [qw( PATH ID3 LEN ARTIST SONG MAXDATA   )],
+        etc    => [qw( EMPTY_STRING MINIMUM_SEARCH_LENGTH )],
     );
     @EXPORT_OK        = map { @{ $EXPORT_TAGS{$_} } } keys %EXPORT_TAGS;
     $EXPORT_TAGS{all} = \@EXPORT_OK;
