@@ -4,7 +4,7 @@ use warnings;
 use CGI;
 use Cwd;
 use Carp qw( croak );
-use MP3::M3U::Parser 2.20;
+use MP3::M3U::Parser 2.30;
 
 run();
 

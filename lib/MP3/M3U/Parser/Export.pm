@@ -4,6 +4,7 @@ use warnings;
 use vars qw( $VERSION );
 use Carp qw( croak );
 use MP3::M3U::Parser::Constants;
+use MP3::M3U::Parser::Dummy;
 
 $VERSION = '2.30';
 

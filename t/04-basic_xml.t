@@ -9,13 +9,13 @@ BEGIN {
 }
 
 my $parser = MP3::M3U::Parser->new(
-    -parse_path => 'asis',
-    -seconds    => 'format',
-    -search     => q{},
-    -overwrite  => 1,
-    -encoding   => 'ISO-8859-9',
-    -expformat  => 'xml',
-);
+                -parse_path => 'asis',
+                -seconds    => 'format',
+                -search     => q{},
+                -overwrite  => 1,
+                -encoding   => 'ISO-8859-9',
+                -expformat  => 'xml',
+            );
 
 is(ref $parser, 'MP3::M3U::Parser', 'Parser' );
 

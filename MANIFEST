@@ -1,5 +1,6 @@
 lib/MP3/M3U/Parser.pm
 lib/MP3/M3U/Parser/Constants.pm
+lib/MP3/M3U/Parser/Dummy.pm
 lib/MP3/M3U/Parser/Export.pm
 t/03-basic.t
 t/04-basic_xml.t
