@@ -61,11 +61,12 @@ sub _check_export_params {
     }
     if ( ! $to_scalar ) {
         if ( -e $file && ! $overwrite ) {
-           croak "The export file '$file' exists on disk and you didn't select to overwrite it";
+           croak "The export file '$file' exists & overwrite option is not set";
         }
         require IO::File;
         $fh = IO::File->new;
-        $fh->open( $file, '>' ) or croak "I can't open export file '$file' for writing: $!";
+        $fh->open( $file, '>' )
+            or croak "I can't open export file '$file' for writing: $!";
     }
     return $fh;
 }
@@ -146,7 +147,8 @@ sub _export_to_html {
 sub _export_to_xml {
     my($self, $encoding) = @_;
     my $OUTPUT = EMPTY_STRING;
-    $self->{TOTAL_TIME} = $self->_seconds($self->{TOTAL_TIME}) if $self->{TOTAL_TIME} > 0;
+    $self->{TOTAL_TIME} = $self->_seconds($self->{TOTAL_TIME})
+                                if $self->{TOTAL_TIME} > 0;
     $OUTPUT .= sprintf qq~<?xml version="1.0" encoding="%s" ?>\n~, $encoding;
     $OUTPUT .= sprintf qq~<m3u lists="%s" songs="%s" time="%s" average="%s">\n~,
                        $self->{TOTAL_FILES},
@@ -185,7 +187,7 @@ sub _tcompile {
                 TYPE       => 'STRING',
                 SOURCE     => $opt{template},
                 DELIMITERS => ['<%', '%>'],
-            ) or croak "Couldn't construct the HTML template: $Text::Template::ERROR";
+            ) or croak "Couldn't construct the template: $Text::Template::ERROR";
 
     my @globals;
     foreach my $p ( keys %{ $opt{params} } ) {
@@ -198,7 +200,8 @@ sub _tcompile {
     }
 
     my $text = $t->fill_in(PACKAGE => $class . '::Dummy',
-                PREPEND => sprintf('use strict;use vars qw[%s];', join q{ }, @globals),
+                PREPEND => sprintf('use strict;use vars qw[%s];',
+                                    join q{ }, @globals ),
                 HASH    => $opt{params},
               ) or croak "Couldn't fill in template: $Text::Template::ERROR";
     return $text;
@@ -213,7 +216,8 @@ sub _template {
  <head>
    <title>MP3::M3U::Parser Generated PlayList</title>
    <meta name="Generator" content="MP3::M3U::Parser">
-   <meta http-equiv="content-type" content="text/html; charset=<%$HTML{ENCODING}%>">
+   <meta http-equiv="content-type"
+         content="text/html; charset=<%$HTML{ENCODING}%>">
 
    <style type="text/css">
    <!--

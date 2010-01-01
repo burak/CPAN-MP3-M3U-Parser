@@ -32,7 +32,8 @@ sub new {
         expformat     => $o{'-expformat'}  || EMPTY_STRING, # leave it to export() if no param
         expdrives     => $o{'-expdrives'}  || EMPTY_STRING, # leave it to export() if no param
     };
-    if ( $self->{search_string} && length $self->{search_string} < MINIMUM_SEARCH_LENGTH ) {
+    my $s = $self->{search_string};
+    if ( $s && length $s < MINIMUM_SEARCH_LENGTH ) {
         croak 'A search string must be at least three characters long';
     }
     bless  $self, $class;
@@ -41,18 +42,21 @@ sub new {
 
 sub parse {
     my($self, @files) = @_;
-    foreach my $file (@files) {
-        if( ! ref $file ) {
-            $file = $self->_locate_file($file);
-            -e $file or croak "'$file' does not exist";
-        }
-        $self->_parse_file($file);
+
+    foreach my $file ( @files ) {
+        $self->_parse_file(
+            ref $file ? $file
+                      : do {
+                            my $new = $self->_locate_file( $file );
+                            croak "$new does not exist" if ! -e $new;
+                            $new;
+                        }
+        );
     }
 
     # Average time of all the parsed songs:
-    $self->{AVERAGE_TIME} = ($self->{ACOUNTER} && $self->{TOTAL_TIME})
-                            ? $self->_seconds( $self->{TOTAL_TIME} / $self->{ACOUNTER} )
-                            : 0;
+    my($ac, $tt)          = ( $self->{ACOUNTER}, $self->{TOTAL_TIME} );
+    $self->{AVERAGE_TIME} = ($ac && $tt) ? $self->_seconds( $tt / $ac ) : 0;
     return defined wantarray ? $self : undef;
 }
 
@@ -70,7 +74,7 @@ sub _check_parse_file_params {
         ($cd = pop @tmp) =~ s{ [.] m3u }{}xmsi;
     }
 
-    my $this_file = $ref ? 'ANON' . $self->{ANON}++ : $self->_locate_file($file);
+    my $this_file = $ref ? 'ANON'.$self->{ANON}++ : $self->_locate_file($file);
 
     $self->{'_M3U_'}[ $self->{INDEX} ] = {
         file  => $this_file,
@@ -105,7 +109,7 @@ sub _validate_m3u {
         # the file as a m3u playlist file.
         chomp $m3u;
         last PREPROCESS if $m3u =~ RE_M3U_HEADER;
-        croak $ref ? "The '$ref' parameter you have passed does not contain valid m3u data"
+        croak $ref ? "The '$ref' parameter does not contain valid m3u data"
                    : "'$file' is not a valid m3u file";
     }
     return;
@@ -119,11 +123,16 @@ sub _iterator {
 sub _extract_path {
     my($self, $i, $m3u, $device_ref, $counter_ref) = @_;
 
-    if ( $m3u =~ RE_DRIVE_PATH || $m3u =~ RE_NORMAL_PATH || $m3u =~ RE_PARTIAL_PATH ) {
+    if ( $m3u =~ RE_DRIVE_PATH  ||
+         $m3u =~ RE_NORMAL_PATH ||
+         $m3u =~ RE_PARTIAL_PATH
+        ) {
         # Get the drive and path info.
-        my $path       = $1;
-        $i->[PATH]     = $self->{parse_path} eq 'asis' ? $m3u : $path;
-        ${$device_ref} = $1 if ${$device_ref} eq DEFAULT_DRIVE && $m3u =~ m{ \A (\w:) }xms;
+        my $path   = $1;
+        $i->[PATH] = $self->{parse_path} eq 'asis' ? $m3u : $path;
+        if ( ${$device_ref} eq DEFAULT_DRIVE && $m3u =~ m{ \A (\w:) }xms ) {
+            ${$device_ref} = $1;
+        }
         ${ $counter_ref }++;
     }
     return;
@@ -226,11 +235,11 @@ sub _set_parse_file_counters {
     my($self, $ttime, $tsong, $taver) = @_;
 
     # Calculate the total songs in the list:
-    $self->{_M3U_}[ $self->{INDEX} ]{total} = $#{$self->{_M3U_}[ $self->{INDEX} ]{data}} + 1;
+    my $k = $self->{_M3U_}[ $self->{INDEX} ];
+    $k->{total} = @{ $k->{data} };
 
     # Adjust the global counters:
-    $self->{TOTAL_FILES}-- if $self->{search_string} &&
-                                $#{ $self->{_M3U_}[ $self->{INDEX} ]{data} } < 0;
+    $self->{TOTAL_FILES}-- if $self->{search_string} && $k->{total} == 0;
     $self->{TOTAL_TIME}  += $ttime;
     $self->{TOTAL_SONGS} += $tsong;
     $self->{ACOUNTER}    += $taver;
@@ -279,8 +288,8 @@ sub _locate_file {
 
 sub _search {
     my($self, $path, $id3) = @_;
-    return(0) unless( $id3 or $path);
-    my $search = quotemeta($self->{search_string});
+    return 0 if !$id3 && !$path;
+    my $search = quotemeta $self->{search_string};
     # Try a basic case-insensitive match:
     return 1 if $id3 =~ /$search/xmsi || $path =~ /$search/xmsi;
     return 0;
@@ -328,11 +337,11 @@ sub _trim {
 sub info {
     # Instead of direct accessing to object tables, use this method.
     my $self = shift;
+    my $tt   = $self->{TOTAL_TIME};
     return
         songs   => $self->{TOTAL_SONGS},
         files   => $self->{TOTAL_FILES},
-        ttime   => $self->{TOTAL_TIME}  ? $self->_seconds( $self->{TOTAL_TIME} )
-                                        : 0,
+        ttime   => $tt ? $self->_seconds( $tt ) : 0,
         average => $self->{AVERAGE_TIME} || 0,
         drive   => [ map { $_->{drive} } @{ $self->{_M3U_} } ],
     ;
@@ -433,13 +442,13 @@ to search. Think this "search" as a parser filter.
 
 Note that, the module will do a *very* basic case-insensitive search. It does 
 dot accept multiple words (if you pass a string like "michael beat it", it will 
-not search every word seperated by space, it will search the string "michael beat it" 
-and probably does not return any results -- it will not match 
-"michael jackson - beat it"), it does not have a boolean search support, etc. If you 
-want to do something more complex, get the parsed tree and use it in your own 
-search function, or subclass this module and write your own C<_search> method
-(notice the underscore in the method name). See the tests for a subclassing
-example.
+not search every word seperated by space, it will search the string
+"michael beat it" and probably does not return any results -- it will not match 
+"michael jackson - beat it"), it does not have a boolean search support, etc.
+If you want to do something more complex, get the parsed tree and use it in
+your own search function, or subclass this module and write your own C<_search>
+method (notice the underscore in the method name). See the tests for a
+subclassing example.
 
 =item C<-parse_path>
 
@@ -458,8 +467,8 @@ So, if you have a mixed list like:
 
 set this parameter to 'C<asis>' to not to remove the drive letter from the real 
 path. Also, you "must" ignore the drive table contents which will still contain 
-a possibly wrong value; C<export> does take the drive letters from the drive tables. 
-So, you can not use the drive area in the exported xml (for example).
+a possibly wrong value; C<export> does take the drive letters from the drive
+tables. So, you can not use the drive area in the exported xml (for example).
 
 =item C<-overwrite>
 
@@ -546,7 +555,7 @@ Each playlist is added as a hashref:
 
    $pls = {
            drive => "Drive letter if available",
-           file  => "Path to the parsed m3u file or generic name if GLOB/SCALAR",
+           file  => "Path to the parsed m3u or generic name if GLOB/SCALAR",
            data  => "Songs in the playlist",
            total => "Total number of songs in the playlist",
            list  => "name of the list",
@@ -700,8 +709,8 @@ the distro, you can download it from CPAN.
 your saved M3U lists, open preferences, go to "Options", set "Read titles on" 
 to "B<Display>", add songs to your playlist and scroll down/up in the playlist 
 window until you see all songs' time infos. If you don't do this, you'll get 
-only the file names or only the time infos for the songs you have played. Because, 
-to get the time info, winamp must read/scan the file first.
+only the file names or only the time infos for the songs you have played.
+Because, to get the time info, winamp must read/scan the file first.
 
 =item B<Naming M3U Files>
 
