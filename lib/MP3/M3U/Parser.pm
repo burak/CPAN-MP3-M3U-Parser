@@ -5,9 +5,10 @@ use vars qw( $VERSION );
 use base qw( MP3::M3U::Parser::Export );
 use Carp qw( croak );
 use MP3::M3U::Parser::Constants;
-use constant MINUTE_MULTIPLIER => 60;
 
 $VERSION = '2.30';
+
+my %LOADED;
 
 sub new {
     # -parse_path -seconds -search -overwrite
@@ -57,23 +58,24 @@ sub parse {
 
 sub _check_parse_file_params {
     my($self, $file) = @_;
+
     my $ref = ref $file;
     if ( $ref && $ref ne 'GLOB' && $ref ne 'SCALAR' ) {
         croak "Unknown parameter of type '$ref' passed to parse()";
     }
+
     my $cd;
     if ( ! $ref ) {
         my @tmp = split m{[\\/]}xms, $file;
         ($cd = pop @tmp) =~ s{ [.] m3u }{}xmsi;
     }
 
-    my $this_file = $ref ? 'ANON' . $self->{ANON}++
-                  :        $self->_locate_file($file)
-                  ;
+    my $this_file = $ref ? 'ANON' . $self->{ANON}++ : $self->_locate_file($file);
+
     $self->{'_M3U_'}[ $self->{INDEX} ] = {
         file  => $this_file,
         list  => $ref ? $this_file : ($cd || EMPTY_STRING),
-        drive => 'CDROM:',
+        drive => DEFAULT_DRIVE,
         data  => [],
         total => 0,
     };
@@ -91,7 +93,7 @@ sub _check_parse_file_params {
         # Open the file to parse:
         require IO::File;
         $fh = IO::File->new;
-        $fh->open("< $file") or croak "I could't open '$file': $!";
+        $fh->open( $file, '<' ) or croak "I could't open '$file': $!";
     }
     return $ref, $fh, @fh;
 }
@@ -102,11 +104,9 @@ sub _validate_m3u {
         # First line is just a comment. But we need it to validate
         # the file as a m3u playlist file.
         chomp $m3u;
-        if ( $m3u !~ m{ \A \#EXTM3U }xms ) {
-            croak $ref ? "The '$ref' parameter you have passed does not contain valid m3u data"
-                       : "'$file' is not a valid m3u file";
-        }
-        last PREPROCESS;
+        last PREPROCESS if $m3u =~ RE_M3U_HEADER;
+        croak $ref ? "The '$ref' parameter you have passed does not contain valid m3u data"
+                   : "'$file' is not a valid m3u file";
     }
     return;
 }
@@ -118,15 +118,12 @@ sub _iterator {
 
 sub _extract_path {
     my($self, $i, $m3u, $device_ref, $counter_ref) = @_;
-    if ( # Possible cases:
-        $m3u =~ m{ \A \w:[\\/]      (.+?) \z }xms || # C:\mp3\Singer - Song.mp3
-        $m3u =~ m{ \A    [\\/]([^\\/].+?) \z }xms || # \mp3\Singer - Song.mp3
-        $m3u =~ m{ \A               (.+?) \z }xms    # Singer - Song.mp3
-    ) {
+
+    if ( $m3u =~ RE_DRIVE_PATH || $m3u =~ RE_NORMAL_PATH || $m3u =~ RE_PARTIAL_PATH ) {
         # Get the drive and path info.
         my $path       = $1;
         $i->[PATH]     = $self->{parse_path} eq 'asis' ? $m3u : $path;
-        ${$device_ref} = $1 if ${$device_ref} eq 'CDROM:' && $m3u =~ m{ \A (\w:) }xms;
+        ${$device_ref} = $1 if ${$device_ref} eq DEFAULT_DRIVE && $m3u =~ m{ \A (\w:) }xms;
         ${ $counter_ref }++;
     }
     return;
@@ -171,8 +168,8 @@ sub _parse_file {
 
     $self->_validate_m3u( $next, $ref, $file );
 
-    my $dkey   =  $self->{'_M3U_'}[ $self->{INDEX} ]{data};  # data key
-    my $device = \$self->{'_M3U_'}[ $self->{INDEX} ]{drive}; # device letter
+    my $dkey   =  $self->{_M3U_}[ $self->{INDEX} ]{data};  # data key
+    my $device = \$self->{_M3U_}[ $self->{INDEX} ]{drive}; # device letter
 
     # These three variables are used when there is a '-search' parameter.
     # long: total_time, total_songs, total_average_time
@@ -185,7 +182,7 @@ sub _parse_file {
         next if ! $m3u; # Record may be blank if it is not a disk file.
         $#{$dkey->[$index]} = MAXDATA; # For the absence of EXTINF line.
         # If the extra information exists, parse it:
-        if ( $m3u =~ m{ \#EXTINF}xmsi ) {
+        if ( $m3u =~ RE_INF_HEADER ) {
             my($j, $sec, @song);
             ($j ,@song) = split m{\,}xms, $m3u;
             ($j ,$sec)  = split m{:}xms, $j;
@@ -197,16 +194,14 @@ sub _parse_file {
             next RECORD; # jump to path info
         }
 
-        $self->_extract_path(        $dkey->[$index], $m3u, $device, \$tsong );
-        $self->_extract_artist_song( $dkey->[$index] );
-        $self->_initialize(          $dkey->[$index] );
+        my $i = $dkey->[$index];
+        $self->_extract_path(        $i, $m3u, $device, \$tsong );
+        $self->_extract_artist_song( $i );
+        $self->_initialize(          $i );
 
         # If we are searching something:
         if ( $self->{search_string} ) {
-            my $matched = $self->_search(
-                            $dkey->[$index][PATH],
-                            $dkey->[$index][ID3],
-                          );
+            my $matched = $self->_search( $i->[PATH], $i->[ID3] );
             if ( $matched ) {
                 $index++; # if we got a match, increase the index
             }
@@ -235,7 +230,7 @@ sub _set_parse_file_counters {
 
     # Adjust the global counters:
     $self->{TOTAL_FILES}-- if $self->{search_string} &&
-                                $#{ $self->{'_M3U_'}[ $self->{INDEX} ]{data} } < 0;
+                                $#{ $self->{_M3U_}[ $self->{INDEX} ]{data} } < 0;
     $self->{TOTAL_TIME}  += $ttime;
     $self->{TOTAL_SONGS} += $tsong;
     $self->{ACOUNTER}    += $taver;
@@ -246,20 +241,27 @@ sub _set_parse_file_counters {
 
 sub reset { ## no critic (ProhibitBuiltinHomonyms)
     # reset the object
-    my $self = shift;
-    $self->{'_M3U_'}      = [];
-    $self->{TOTAL_FILES}  = 0;
-    $self->{TOTAL_TIME}   = 0;
-    $self->{TOTAL_SONGS}  = 0;
-    $self->{AVERAGE_TIME} = 0;
-    $self->{ACOUNTER}     = 0;
-    $self->{INDEX}        = 0;
+    my $self   = shift;
+    my @zeroes = qw(
+        TOTAL_FILES
+        TOTAL_TIME
+        TOTAL_SONGS
+        AVERAGE_TIME
+        ACOUNTER INDEX
+    );
+
+    foreach my $field ( @zeroes ) {
+        $self->{ $field } = 0;
+    }
+
+    $self->{_M3U_} = [];
+
     return defined wantarray ? $self : undef;
 }
 
 sub result {
     my $self = shift;
-    return(wantarray ? @{$self->{'_M3U_'}} : $self->{'_M3U_'});
+    return(wantarray ? @{$self->{_M3U_}} : $self->{_M3U_});
 }
 
 sub _locate_file {
@@ -284,9 +286,28 @@ sub _search {
     return 0;
 }
 
+sub _is_loadable {
+    my($self, $module) = @_;
+    return 1 if $LOADED{ $module };
+    local $^W;
+    local $@;
+    local $!;
+    local $^E;
+    local $SIG{__DIE__};
+    local $SIG{__WARN__};
+    my $eok = eval qq{ require $module; 1; };
+    return 0 if $@ || !$eok;
+    $LOADED{ $module } = 1;
+    return 1;
+}
+
 sub _escape {
     my $self = shift;
     my $text = shift || return EMPTY_STRING;
+    if ( $self->_is_loadable('HTML::Entities') ) {
+        return HTML::Entities::encode_entities_numeric( $text );
+    }
+    # fall-back to lame encoder
     my %escape = qw(
         &    &amp;
         "    &quot;
@@ -307,18 +328,14 @@ sub _trim {
 sub info {
     # Instead of direct accessing to object tables, use this method.
     my $self = shift;
-    my @drive;
-    for my $i ( 0..$#{ $self->{_M3U_} } ) {
-        push @drive, $self->{'_M3U_'}[$i]{drive};
-    }
-    return(
+    return
         songs   => $self->{TOTAL_SONGS},
         files   => $self->{TOTAL_FILES},
         ttime   => $self->{TOTAL_TIME}  ? $self->_seconds( $self->{TOTAL_TIME} )
                                         : 0,
         average => $self->{AVERAGE_TIME} || 0,
-        drive   => [@drive],
-    );
+        drive   => [ map { $_->{drive} } @{ $self->{_M3U_} } ],
+    ;
 }
 
 sub _seconds {
@@ -341,9 +358,6 @@ sub _seconds {
     return $hr ? "$hr:$min:$sec" : "$min:$sec";
 }
 
-package
-   MP3::M3U::Parser::Dummy;
-
 1;
 
 __END__
@@ -356,31 +370,39 @@ MP3::M3U::Parser - MP3 playlist parser.
 
 =head1 SYNOPSIS
 
-   use MP3::M3U::Parser;
-   my $parser = MP3::M3U::Parser->new(%options);
-
-   $parser->parse(\*FILEHANDLE, \$scalar, "/path/to/playlist.m3u");
-   my $result = $parser->result;
-   my %info   = $parser->info;
-
-   $parser->export(-format   => 'xml',
-                   -file     => "/path/mp3.xml",
-                   -encoding => 'ISO-8859-9');
-
-   $parser->export(-format   => 'html',
-                   -file     => "/path/mp3.html",
-                   -drives   => 'off');
-
-   # convert all m3u files to individual html files.
-   foreach (<*.m3u>) {
-      $parser->parse($_)->export->reset;
-   }
-
-   # convert all m3u files to one big html file.
-   foreach (<*.m3u>) {
-      $parser->parse($_);
-   }
-   $parser->export;
+    use MP3::M3U::Parser;
+    my $parser = MP3::M3U::Parser->new( %options );
+    
+    $parser->parse(
+        \*FILEHANDLE,
+        \$scalar,
+        '/path/to/playlist.m3u',
+    );
+    my $result = $parser->result;
+    my %info   = $parser->info;
+    
+    $parser->export(
+        -format   => 'xml',
+        -file     => '/path/mp3.xml',
+        -encoding => 'ISO-8859-9',
+    );
+    
+    $parser->export(
+        -format   => 'html',
+        -file     => '/path/mp3.html',
+        -drives   => 'off',
+    );
+    
+    # convert all m3u files to individual html files.
+    foreach ( <*.m3u> ) {
+        $parser->parse( $_ )->export->reset;
+    }
+    
+    # convert all m3u files to one big html file.
+    foreach ( <*.m3u> ) {
+        $parser->parse( $_ );
+    }
+    $parser->export;
 
 =head1 DESCRIPTION
 
@@ -654,8 +676,11 @@ Note that, if there is an error, the module will die with that error. So,
 using C<eval> for all method calls can be helpful if you don't want to die:
 
 
-   eval {$parser->parse(@list)}
-   die "Parser error: $@" if $@;
+    my $eval_ok = eval {
+       $parser->parse( @list );
+       1;
+    }
+    die "Parser error: $@" if $@ || !$eval_ok;
 
 As you can see, if there is an error, you can catch this with C<eval> and 
 access the error message with the special Perl variable C<$@>.
@@ -669,7 +694,7 @@ the distro, you can download it from CPAN.
 
 =over 4
 
-=item B<WinAmp>
+=item B<Winamp>
 
 (For v2.80) If you don't see any EXTINF lines in 
 your saved M3U lists, open preferences, go to "Options", set "Read titles on" 
@@ -687,24 +712,15 @@ you can have an easy maintained archive.
 
 =head1 CAVEATS
 
-v2 is B<not> compatible with v1x. v2 of this module breaks
-old code. See the I<Changes> file for details.
+HTML and XML escaping is limited to these characters: 
+E<amp> E<quot> E<lt> E<gt> B<unless> you have C<HTML::Entities> installed.
 
 =head1 BUGS
 
-=over 4
-
-=item * 
-
-HTML and XML escaping is limited to these characters: 
-E<amp> E<quot> E<lt> E<gt>.
-
-=back 
-
-Contact the author if you find any other bugs.
+Contact the author if you find any bugs.
 
 =head1 SEE ALSO
 
-
+L<HTML::Entities>.
 
 =cut

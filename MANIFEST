@@ -8,7 +8,7 @@ t/06-sub_search.t
 t/07-scalar_xml.t
 t/08-scalar_html.t
 eg/m3u.cgi
-test.m3u
+t/data/test.m3u
 Changes
 Build.PL
 MANIFEST

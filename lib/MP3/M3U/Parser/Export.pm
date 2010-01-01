@@ -7,31 +7,49 @@ use MP3::M3U::Parser::Constants;
 
 $VERSION = '2.30';
 
+my %DEFAULT = (
+    format    => 'html',
+    filename  => 'mp3_m3u%s.%s',
+    encoding  => 'ISO-8859-1',
+    drives    => 'on',
+    overwrite => 0,
+    toscalar  => 0,
+);
+
 sub export {
     my($self, @args) = @_;
     my %opt       = @args % 2 ? () : @args;
-    my $format    = $opt{'-format'}    || $self->{'expformat'}   || 'html';
-    my $file      = $opt{'-file'}      || sprintf 'mp3_m3u%s.%s', $self->{EXPORTF}, $format;
-    my $encoding  = $opt{'-encoding'}  || $self->{'encoding'}    || 'ISO-8859-1';
-    my $drives    = $opt{'-drives'}    || $self->{'expdrives'}   || 'on';
-    my $overwrite = $opt{'-overwrite'} || $self->{'overwrite'}   ||  0;
-    my $to_scalar = $opt{'-toscalar'}  || $self->{'exptoscalar'} ||  0;
+    my $format    = $opt{'-format'}    || $self->{expformat}   || $DEFAULT{format   };
+    my $encoding  = $opt{'-encoding'}  || $self->{encoding}    || $DEFAULT{encoding };
+    my $drives    = $opt{'-drives'}    || $self->{expdrives}   || $DEFAULT{drives   };
+    my $overwrite = $opt{'-overwrite'} || $self->{overwrite}   || $DEFAULT{overwrite};
+    my $to_scalar = $opt{'-toscalar'}  || $self->{exptoscalar} || $DEFAULT{toscalar };
+    my $file      = $opt{'-file'}      || $self->_default_filename( $format );
+
     $file = $self->_locate_file($file) if ! $to_scalar;
-    my $fh = $self->_check_export_params( $file, $to_scalar, $overwrite );
     my $OUTPUT = $format eq 'xml'
-               ? $self->_export_to_xml($encoding)
-               : $self->_export_to_html($encoding, $drives, $to_scalar, $file)
+               ? $self->_export_to_xml(  $encoding )
+               : $self->_export_to_html( $encoding, $drives, $to_scalar, $file)
                ;
 
     if ( $to_scalar ) {
         ${$to_scalar} = $OUTPUT;
-    } else {
-        my $pok = print {$fh} $OUTPUT;
+    }
+    else {
+        my $fh = $self->_check_export_params( $file, $to_scalar, $overwrite );
+        print {$fh} $OUTPUT or croak "Can't print to FH: $!";
         $fh->close;
     }
 
    $self->{EXPORTF}++;
-   return defined wantarray ? $self : undef;
+   return $self if defined wantarray;
+   return;
+}
+
+sub _default_filename {
+    my($self, $format) = @_;
+    croak 'Export format is missing' if ! $format;
+    return sprintf $DEFAULT{filename}, $self->{EXPORTF}, $format;
 }
 
 sub _check_export_params {
@@ -41,12 +59,12 @@ sub _check_export_params {
         croak '-toscalar must be a SCALAR reference';
     }
     if ( ! $to_scalar ) {
-        if (-e $file and not $overwrite) {
+        if ( -e $file && ! $overwrite ) {
            croak "The export file '$file' exists on disk and you didn't select to overwrite it";
         }
         require IO::File;
         $fh = IO::File->new;
-        $fh->open("> $file") or croak "I can't open export file '$file' for writing: $!";
+        $fh->open( $file, '>' ) or croak "I can't open export file '$file' for writing: $!";
     }
     return $fh;
 }

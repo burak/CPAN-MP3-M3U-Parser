@@ -4,6 +4,9 @@
         'Text::Template' => 0,
         ( $] < 5.006 ? ( 'warnings::compat'  => 0 ) : () ),
     },
+    recommends => {
+        'HTML::Entities' => 0,
+    },
     meta_merge => {
         resources => {
             repository => 'http://bitbucket.org/burak/cpan-mp3-m3u-parser/',

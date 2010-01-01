@@ -1,18 +1,27 @@
 #!/usr/bin/env perl -w
 use strict;
 use warnings;
+use File::Spec;
 use Test::More qw( no_plan );
 
+BEGIN {
+    use_ok('MP3::M3U::Parser');
+}
+
 my $parser = MyParser->new;
-   $parser->parse('test.m3u');
-   $parser->export(-format    => 'html',
-                   -file      => '05_sub_html.html',
-                   -overwrite => 1);
+$parser->parse(
+    File::Spec->catfile( qw/ t data test.m3u / )
+);
+$parser->export(
+    -format    => 'html',
+    -file      => '05_sub_html.html',
+    -overwrite => 1,
+);
 
 ok(1, 'Some test');
 
 package MyParser;
-use base qw[MP3::M3U::Parser];
+use base qw(MP3::M3U::Parser);
 
 sub _template {
    return <<'MP3M3UPARSERTEMPLATE';
