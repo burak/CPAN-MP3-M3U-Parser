@@ -154,7 +154,7 @@ sub _extract_artist_song {
     }
     if ( @xsong ) {
         my $song = join q{-}, @xsong;
-        $song =~ $self->_trim( $song );
+        $song = $self->_trim( $song );
         $song =~ s{ [.] [a-zA-Z0-9]+ \z }{}xms; # remove extension if exists
         $i->[SONG] = $song;
     }
