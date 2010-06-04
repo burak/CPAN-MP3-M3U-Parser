@@ -470,6 +470,9 @@ path. Also, you "must" ignore the drive table contents which will still contain
 a possibly wrong value; C<export> does take the drive letters from the drive
 tables. So, you can not use the drive area in the exported xml (for example).
 
+B<Note:> you probably want to set this parameter to 'C<asis>' on a non-Windows
+machine.
+
 =item C<-overwrite>
 
 Same as the C<-overwrite> option in L<export|/export> but C<new> sets this 
