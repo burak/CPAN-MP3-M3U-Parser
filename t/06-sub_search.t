@@ -28,7 +28,7 @@ ok(1, 'Some test');
 package MyParser;
 use base qw( MP3::M3U::Parser );
 
-sub _search {
+sub _search { ## no critic (ProhibitUnusedPrivateSubroutines)
     my $self   = shift;
     my $path   = shift;
     my $id3    = shift;

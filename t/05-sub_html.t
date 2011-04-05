@@ -23,7 +23,7 @@ ok(1, 'Some test');
 package MyParser;
 use base qw(MP3::M3U::Parser);
 
-sub _template {
+sub _template { ## no critic (ProhibitUnusedPrivateSubroutines)
    return <<'MP3M3UPARSERTEMPLATE';
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
    "http://www.w3.org/TR/html4/loose.dtd">
