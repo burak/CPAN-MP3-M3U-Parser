@@ -12,4 +12,10 @@
             repository => 'http://bitbucket.org/burak/cpan-mp3-m3u-parser/',
         },
     },
+    BUILDER => {
+        change_versions                  => 1,
+        copyright_first_year             => 2003,
+        add_pod_author_copyright_license => 1,
+        build_monolith                   => 1,
+    },
 }
