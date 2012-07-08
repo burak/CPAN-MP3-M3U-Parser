@@ -6,7 +6,7 @@ use base qw( MP3::M3U::Parser::Export );
 use Carp qw( croak );
 use MP3::M3U::Parser::Constants;
 
-$VERSION = '2.30';
+$VERSION = '2.31';
 
 my %LOADED;
 
@@ -726,10 +726,6 @@ you can have an easy maintained archive.
 
 HTML and XML escaping is limited to these characters: 
 E<amp> E<quot> E<lt> E<gt> B<unless> you have C<HTML::Entities> installed.
-
-=head1 BUGS
-
-Contact the author if you find any bugs.
 
 =head1 SEE ALSO
 
