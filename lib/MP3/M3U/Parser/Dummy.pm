@@ -11,6 +11,8 @@ __END__
 
 =pod
 
+=encoding utf8
+
 =head1 NAME
 
 MP3::M3U::Parser::Dummy - Template container class

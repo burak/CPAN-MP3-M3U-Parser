@@ -4,9 +4,11 @@ use warnings;
 use File::Spec;
 use Test::More qw( no_plan );
 
-BEGIN {
-    use_ok('MP3::M3U::Parser');
-}
+use MP3::M3U::Parser;
+
+my $file = '05_sub_html.html';
+
+unlink $file if -e $file;
 
 my $parser = MyParser->new;
 $parser->parse(
@@ -14,7 +16,7 @@ $parser->parse(
 );
 $parser->export(
     -format    => 'html',
-    -file      => '05_sub_html.html',
+    -file      => $file,
     -overwrite => 1,
 );
 

@@ -346,6 +346,8 @@ __END__
 
 =pod
 
+=encoding utf8
+
 =head1 NAME
 
 MP3::M3U::Parser::Export - Exports playlist to HTML/XML
