@@ -373,6 +373,8 @@ __END__
 
 =pod
 
+=encoding utf8
+
 =head1 NAME
 
 MP3::M3U::Parser - MP3 playlist parser.
