@@ -22,6 +22,9 @@ to enter the cpan shell. And then enter:
 
    install MP3::M3U::Parser
 
+If you don't have the cpan shell available, then you have a broken perl
+installation.
+
 DEPENDENCIES
 
 This module requires these other modules:
