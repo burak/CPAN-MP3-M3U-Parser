@@ -8,7 +8,7 @@
     },
     meta_merge => {
         resources => {
-            repository => 'http://bitbucket.org/burak/cpan-mp3-m3u-parser/',
+            repository => 'http://github.com/burak/cpan-mp3-m3u-parser/',
         },
     },
     BUILDER => {
