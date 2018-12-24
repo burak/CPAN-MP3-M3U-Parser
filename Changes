@@ -1,6 +1,8 @@
 Revision history for Perl extension MP3::M3U::Parser.
 
 {{$NEXT}}
+
+2.33 2018-12-25 BURAK
     - Distro fixes.
 
 2.32 Tue Jul  5 01:13:42 2016
