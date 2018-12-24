@@ -1,12 +1,11 @@
 package MP3::M3U::Parser::Export;
+
 use strict;
 use warnings;
-use vars qw( $VERSION );
+
 use Carp qw( croak );
 use MP3::M3U::Parser::Constants;
 use MP3::M3U::Parser::Dummy;
-
-$VERSION = '2.30';
 
 my %DEFAULT = (
     format    => 'html',

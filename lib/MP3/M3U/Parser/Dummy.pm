@@ -1,9 +1,7 @@
 package MP3::M3U::Parser::Dummy;
+
 use strict;
 use warnings;
-use vars qw( $VERSION );
-
-$VERSION = '2.30';
 
 1;
 

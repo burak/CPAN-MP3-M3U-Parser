@@ -1,12 +1,10 @@
 package MP3::M3U::Parser;
+
 use strict;
 use warnings;
-use vars qw( $VERSION );
 use base qw( MP3::M3U::Parser::Export );
 use Carp qw( croak );
 use MP3::M3U::Parser::Constants;
-
-$VERSION = '2.32';
 
 my %LOADED;
 

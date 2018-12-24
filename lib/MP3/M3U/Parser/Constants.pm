@@ -1,9 +1,8 @@
 package MP3::M3U::Parser::Constants;
+
 use strict;
 use warnings;
-use vars qw( $VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS $OID );
-
-$VERSION = '2.30';
+use vars qw( @EXPORT @EXPORT_OK %EXPORT_TAGS $OID );
 
 # Data table key map
 use constant PATH    => $OID++;
