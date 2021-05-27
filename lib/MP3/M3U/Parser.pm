@@ -2,7 +2,7 @@ package MP3::M3U::Parser;
 
 use strict;
 use warnings;
-use base qw( MP3::M3U::Parser::Export );
+use parent qw( MP3::M3U::Parser::Export );
 use Carp qw( croak );
 use MP3::M3U::Parser::Constants;
 

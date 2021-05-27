@@ -23,7 +23,7 @@ $parser->export(
 ok(1, 'Some test');
 
 package MyParser;
-use base qw(MP3::M3U::Parser);
+use parent qw(MP3::M3U::Parser);
 
 sub _template { ## no critic (ProhibitUnusedPrivateSubroutines)
    return <<'MP3M3UPARSERTEMPLATE';

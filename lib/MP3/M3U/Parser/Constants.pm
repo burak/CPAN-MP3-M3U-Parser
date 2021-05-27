@@ -23,7 +23,7 @@ use constant RE_DRIVE_PATH     => qr{ \A \w:[\\/]      (.+?) \z }xms; # C:\mp3\S
 use constant RE_NORMAL_PATH    => qr{ \A    [\\/]([^\\/].+?) \z }xms; # \mp3\Singer - Song.mp3
 use constant RE_PARTIAL_PATH   => qr{ \A               (.+?) \z }xms; # Singer - Song.mp3
 
-use base qw( Exporter );
+use parent qw( Exporter );
 
 BEGIN {
     %EXPORT_TAGS = (
